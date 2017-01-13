@@ -19,9 +19,10 @@ elseif(MSVC)
   add_definitions(-D_SBCS)
 endif()
 
-find_package( Boost COMPONENTS filesystem REQUIRED )
+find_package( Boost COMPONENTS filesystem program_options REQUIRED )
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
+set( Boost_USE_STATIC_LIBS ON )
 
 include_directories( ${Boost_INCLUDE_DIRS} )
 link_directories(${Boost_LIBRARY_DIR})
@@ -33,4 +34,4 @@ add_executable(sserver
   sserver.h
   main.cpp)
 
-target_link_libraries(sserver ${Boost_LIBRARIES})
+target_link_libraries(sserver)

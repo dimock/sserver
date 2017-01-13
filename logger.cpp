@@ -6,13 +6,29 @@
 */
 
 #include <sserver.h>
+#include <fstream>
 #include "boost/date_time/posix_time/posix_time.hpp"
+
+namespace
+{
+  std::string s_logfile_name;
+} // namespace {}
 
 namespace logger_ns
 {
   void send_to_logger(std::string const& msg)
   {
     std::cout << msg << std::endl;
+    if(s_logfile_name.empty())
+      return;
+    std::ofstream of_log(s_logfile_name, std::ios::app);
+    if(of_log)
+      of_log << msg << std::endl;
+  }
+
+  void set_log_file(std::string const& fname)
+  {
+    s_logfile_name = fname;
   }
 
   std::string current_timestamp()

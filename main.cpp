@@ -18,7 +18,11 @@ int main(int argc, char** argv)
     ("help,h", "print this help")
     ("server,s", "start application as server. it would be client otherwise")
     ("ip_addr,i", po::value<std::string>(), "listening given ip-address")
-    ("port,p", po::value<int>(), "listening given port");
+    ("port,p", po::value<int>(), "listening given port")
+    ("send_timeout,t", po::value<int>(), "sending random integer every given number of milliseconds")
+    ("write_timeout,w", po::value<int>(), "writing to file every given number of seconds")
+    ("output_file,f", po::value<std::string>(), "write result to given file")
+    ("log_file,l", po::value<std::string>(), "log file name. for server only");
 
   po::variables_map vm;
   po::store(po::parse_command_line(argc, argv, desc), vm);
@@ -32,6 +36,9 @@ int main(int argc, char** argv)
 
   std::string ip_addr{ "127.0.0.1" };
   int port = 2017;
+  int send_timeout = 200;
+  int write_timeout = 2;
+  std::string output_file{"numbers.dat"};
 
   if(vm.count("ip_addr"))
   {
@@ -43,16 +50,37 @@ int main(int argc, char** argv)
     port = vm["port"].as<int>();
   }
 
+  if(vm.count("send_timeout"))
+  {
+    send_timeout = vm["send_timeout"].as<int>();
+  }
+
+  if(vm.count("write_timeout"))
+  {
+    write_timeout = vm["write_timeout"].as<int>();
+  }
+
+  if(vm.count("output_file"))
+  {
+    output_file = vm["output_file"].as<int>();
+  }
+
   std::shared_ptr<connection_base> conn;
   if(vm.count("server"))
   {
-    logger_ns::logger(logger_ns::message_type::M_INFO, "starting server...");
-    conn.reset(new server_ns::connection(ip_addr, port));
+    std::string log_file{"log.txt"};
+    if(vm.count("log_file"))
+    {
+      log_file = vm["log_file"].as<std::string>();
+    }
+    logger_ns::set_log_file(log_file);
+    logger_ns::logger(logger_ns::message_type::M_INFO, "starting server address ", ip_addr, " port ", port);
+    conn.reset(new server_ns::connection(ip_addr, port, write_timeout, output_file));
   }
   else
   {
-    logger_ns::logger(logger_ns::message_type::M_INFO, "starting client...");
-    conn.reset(new client_ns::connection(ip_addr, port));
+    logger_ns::logger(logger_ns::message_type::M_INFO, "starting client address ", ip_addr, " port ", port);
+    conn.reset(new client_ns::connection(ip_addr, port, send_timeout));
   }
 
   if(!conn)
