@@ -21,7 +21,7 @@
 
 #include <boost/asio.hpp>
 #include <boost/asio/io_service.hpp>
-#include <boost/asio/steady_timer.hpp>
+#include <boost/asio/deadline_timer.hpp>
 #include <boost/asio/buffer.hpp>
 #include <boost/asio/write.hpp>
 #include <boost/asio/ip/tcp.hpp>
@@ -31,6 +31,8 @@ using socket_ptr  = std::shared_ptr<boost::asio::ip::tcp::socket>;
 using value_type  = std::int32_t;
 using result_type = float;
 using counter_type= std::int64_t;
+using timer_type  = boost::asio::deadline_timer;
+using timer_ptr   = std::unique_ptr<timer_type>;
 
 class connection_base
 {
@@ -55,6 +57,7 @@ protected:
   boost::asio::io_service ioservice;
   std::unique_ptr<boost::asio::ip::tcp::endpoint> ep;
   bytes_array bytes;
+  static const std::string quit_str_;
 };
 
 namespace server_ns
@@ -62,10 +65,12 @@ namespace server_ns
   class connection : public connection_base
   {
     int index = 0;
-    int wite_timeout_;
+    int write_timeout_;
     std::string output_file_;
     std::unique_ptr<boost::asio::ip::tcp::acceptor> acc;
     std::map<value_type, counter_type> values_;
+    timer_ptr write_timer_;
+    bool please_stop_ = false;
  
   public:
     connection(std::string const& ip_addr, int port, int wite_timeout, std::string const& output_file);
@@ -75,9 +80,12 @@ namespace server_ns
 
     void start_connection(socket_ptr s);
     void connection_handler(socket_ptr s, const boost::system::error_code & e);
-    void read_handler(int i, socket_ptr s, boost::system::error_code const& e, std::size_t nbytes);
-    void process_received_data(int i, socket_ptr s, std::size_t nbytes);
-    result_type calculate_average();
+    bool read_handler(int i, socket_ptr s, boost::system::error_code const& e, std::size_t nbytes);
+    bool process_received_data(int i, socket_ptr s, std::size_t nbytes);
+    result_type calculate_average() const;
+    void on_timer(boost::system::error_code const& e);
+    void write_results() const;
+    void check_quit(size_t nbytes);
   };
 
 } // namespace server_ns
@@ -91,14 +99,19 @@ namespace client_ns
     std::random_device rdevice;
     std::mt19937 generator;
     std::uniform_int_distribution<> distribution;
+    timer_ptr receive_timer_;
+    static const int receive_timeout_ms_ = 2;
+    bool quit_{ false };
 
   public:
-    connection(std::string const& ip_addr, int port, int send_timeout);
+    connection(std::string const& ip_addr, int port, int send_timeout, bool quit);
 
   private:
     void read_handler(boost::system::error_code const& e, std::size_t nbytes);
     bool send_random_number();
+    void send_quit_signal();
     void print_received_data(size_t nbytes);
+    void init_wait_timeout();
   };
 } // namespace client_ns
 

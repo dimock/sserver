@@ -9,16 +9,24 @@
 #include <numeric>
 #include <boost/algorithm/string/join.hpp>
 
+const std::string connection_base::quit_str_ = "quit";
+
 namespace server_ns
 {
 
-connection::connection(std::string const& ip_addr, int port, int wite_timeout, std::string const& output_file)
+connection::connection(std::string const& ip_addr, int port,
+                       int write_timeout, std::string const& output_file)
   : connection_base(ip_addr, port),
-    wite_timeout_(wite_timeout),
+    write_timeout_(write_timeout),
     output_file_(output_file)
 {
   using namespace boost::asio::ip;
   acc = std::unique_ptr<tcp::acceptor>{new tcp::acceptor(ioservice, *ep)}; 
+  write_timer_ = timer_ptr(new timer_type(ioservice, boost::posix_time::seconds(write_timeout_)));
+  write_timer_->async_wait([this](boost::system::error_code const& e)
+  {
+    on_timer(e);
+  });
 }
 
 void connection::start()
@@ -29,7 +37,7 @@ void connection::start()
 
 void connection::start_connection(socket_ptr s)
 {
-  if(!s)
+  if(!s || !acc)
     return;
   acc->async_accept(*s, [this, s](const boost::system::error_code & e)
   {
@@ -40,33 +48,37 @@ void connection::start_connection(socket_ptr s)
 void connection::connection_handler(socket_ptr s, const boost::system::error_code & e)
 {
   using boost::asio::buffer;
-  if(!s || e)
+  if(!read_handler(index, s, e, 0))
     return;
-  int index_ = index;
-  s->async_read_some(buffer(bytes), [this, s, index_](boost::system::error_code const& e,
-    std::size_t nbytes) {
-    read_handler(index_, s, e, nbytes);
-  });
   logger_ns::logger(logger_ns::message_type::M_INFO, index, "-th client is connected");
   index++;
   start_connection(socket_ptr(new boost::asio::ip::tcp::socket(ioservice)));
 }
 
-void connection::read_handler(int i, socket_ptr s, boost::system::error_code const& e, std::size_t nbytes)
+bool connection::read_handler(int i, socket_ptr s,
+                              boost::system::error_code const& e,
+                              std::size_t nbytes)
 {
+  check_quit(nbytes);
   using boost::asio::buffer;
-  if(!s || e)
-    return;  
-  process_received_data(i, s, nbytes);
+  if(!s || e || please_stop_)
+    return false;
+  if(!process_received_data(i, s, nbytes))
+    return false;
   s->async_read_some(buffer(bytes),
                      [this, s, i](boost::system::error_code const& e,
                      std::size_t nbytes) {
     read_handler(i, s, e, nbytes);
   });
+  return true;
 }
 
-void connection::process_received_data(int i, socket_ptr s, std::size_t nbytes)
+bool connection::process_received_data(int i, socket_ptr s, std::size_t nbytes)
 {
+  if(nbytes == 0)
+    return true;
+  if(!s)
+    return false;
   using boost::asio::buffer;
   size_t nnumbers = nbytes / sizeof(value_type);
   value_type const* numbers = reinterpret_cast<value_type const*>(bytes.data());
@@ -80,15 +92,26 @@ void connection::process_received_data(int i, socket_ptr s, std::size_t nbytes)
                    return std::to_string(v);
                  });
   auto str = boost::algorithm::join(str_numbers, ",");
-  logger_ns::logger(logger_ns::message_type::M_INFO, i, "-th client sent ", nbytes, " bytes with numbers set {", str, "}");
+  logger_ns::logger(logger_ns::message_type::M_INFO, i, "-th client sent ",
+                    nbytes, " bytes with numbers set {", str, "}");
   result_type result = calculate_average();
-  boost::asio::write(*s, buffer(&result, sizeof(result)));
+  try
+  {
+    boost::asio::write(*s, buffer(&result, sizeof(result)));
+  }
+  catch(std::exception& ex)
+  {
+    logger_ns::logger(logger_ns::message_type::M_ERROR, i,
+                      "-th cleint reading caused exception ", ex.what());
+    return false;
+  }
+  return true;
 }
 
 // this version has been written non-optimized to clarify algorithm
 // it is possible to store summ and count somewhere but
 // requires some tricks to have deal with calculation error
-result_type connection::calculate_average()
+result_type connection::calculate_average() const
 {
   // calculate weighted average based on quantity of each key  
   std::int64_t count{};
@@ -104,6 +127,40 @@ result_type connection::calculate_average()
   // perform summation starting from smallest number to eliminate error
   std::sort(squares.begin(), squares.end());
   return std::accumulate(squares.begin(), squares.end(), 0) / count;
+}
+
+void connection::check_quit(size_t nbytes)
+{
+  if(nbytes > 0)
+  {
+    std::string str(bytes.data(), bytes.data()+nbytes);
+    if(str.find(quit_str_) != std::string::npos)
+    {
+      if(write_timer_)
+        write_timer_->cancel();
+      if(acc)
+        acc->cancel();
+      please_stop_ = true;
+    }
+  }
+}
+
+void connection::on_timer(boost::system::error_code const& e)
+{
+  write_results();
+  if(!write_timer_ || e)
+    return;
+  write_timer_->expires_from_now(boost::posix_time::seconds(write_timeout_));
+  write_timer_->async_wait([this](boost::system::error_code const& e)
+  {
+    on_timer(e);
+  });
+}
+
+void connection::write_results() const
+{
+  logger_ns::logger(logger_ns::message_type::M_INFO,
+                    " writing results to file ", output_file_, " ...");
 }
 
 } // namespace server_ns

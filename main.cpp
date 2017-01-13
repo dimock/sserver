@@ -22,7 +22,8 @@ int main(int argc, char** argv)
     ("send_timeout,t", po::value<int>(), "sending random integer every given number of milliseconds")
     ("write_timeout,w", po::value<int>(), "writing to file every given number of seconds")
     ("output_file,f", po::value<std::string>(), "write result to given file")
-    ("log_file,l", po::value<std::string>(), "log file name. for server only");
+    ("log_file,l", po::value<std::string>(), "log file name. for server only")
+    ("quit,q", "send quit signal to server. for client only");
 
   po::variables_map vm;
   po::store(po::parse_command_line(argc, argv, desc), vm);
@@ -37,7 +38,7 @@ int main(int argc, char** argv)
   std::string ip_addr{ "127.0.0.1" };
   int port = 2017;
   int send_timeout = 200;
-  int write_timeout = 2;
+  int write_timeout = 10;
   std::string output_file{"numbers.dat"};
 
   if(vm.count("ip_addr"))
@@ -79,8 +80,13 @@ int main(int argc, char** argv)
   }
   else
   {
+    bool quit{};
+    if(vm.count("quit"))
+    {
+        quit = true;
+    }
     logger_ns::logger(logger_ns::message_type::M_INFO, "starting client address ", ip_addr, " port ", port);
-    conn.reset(new client_ns::connection(ip_addr, port, send_timeout));
+    conn.reset(new client_ns::connection(ip_addr, port, send_timeout, quit));
   }
 
   if(!conn)
