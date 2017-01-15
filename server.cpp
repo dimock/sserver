@@ -6,10 +6,25 @@
  */
 
 #include <sserver.h>
+#include <fstream>
 #include <numeric>
 #include <boost/algorithm/string/join.hpp>
 
 const std::string connection_base::quit_str_ = "quit";
+
+namespace
+{
+
+// write this struct to binary file
+#pragma pack (push,1)
+struct bin_values_struct
+{
+  value_type   value;
+  counter_type counter;
+};
+#pragma pack (pop)
+
+} // namespace {}
 
 namespace server_ns
 {
@@ -159,8 +174,24 @@ void connection::on_timer(boost::system::error_code const& e)
 
 void connection::write_results() const
 {
+  if(output_file_.empty())
+    return;
   logger_ns::logger(logger_ns::message_type::M_INFO,
                     " writing results to file ", output_file_, " ...");
+  std::vector<bin_values_struct> to_disk;
+  to_disk.reserve(values_.size());
+  std::transform(values_.begin(), values_.end(),
+                 std::back_inserter(to_disk),
+                 [](std::pair<value_type, counter_type> const& kv)
+  {
+    return bin_values_struct{kv.first, kv.second};
+  });
+  std::ofstream of(output_file_, std::ios::out);
+  if(!of)
+    return;
+  auto const* buffer = reinterpret_cast<char const*>(to_disk.data());
+  auto size = to_disk.size() * sizeof(bin_values_struct);
+  of.write(buffer, size);
 }
 
 } // namespace server_ns

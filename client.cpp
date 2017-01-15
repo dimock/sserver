@@ -19,7 +19,7 @@ connection::connection(std::string const& ip_addr, int port, int send_timeout, b
 {
   using namespace boost::asio;
   using namespace boost::asio::ip;
-
+  receive_timer_ = timer_ptr(new timer_type(ioservice));
   sock = socket_ptr(new tcp::socket{ ioservice });
   sock->async_connect(*ep, [&, this](boost::system::error_code const& e)
   {
@@ -34,7 +34,8 @@ void connection::read_handler(boost::system::error_code const& e, std::size_t nb
   if(!sock || e)
   {
     logger_ns::logger(logger_ns::message_type::M_ERROR, " error received: ", e.message());
-    receive_timer_->cancel();
+    if(receive_timer_)
+      receive_timer_->cancel();
     return;
   }
   if(quit_)
@@ -100,7 +101,7 @@ void connection::print_received_data(size_t nbytes)
 void connection::init_wait_timeout()
 {
   if(!receive_timer_)
-      receive_timer_ = timer_ptr(new timer_type(ioservice));
+    return;
   receive_timer_->cancel();
   receive_timer_->expires_from_now(boost::posix_time::seconds(receive_timeout_ms_));
   receive_timer_->async_wait([this](boost::system::error_code const& e)
