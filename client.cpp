@@ -61,7 +61,7 @@ void connection::send_quit_signal()
   using namespace boost::asio;
   try
   {
-    write(*sock, buffer(quit_str_.c_str(), quit_str_.size()));
+    write(*sock, buffer(quit_flag_.c_str(), quit_flag_.size()));
   }
   catch(std::exception& e)
   {

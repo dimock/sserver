@@ -57,7 +57,7 @@ protected:
   boost::asio::io_service ioservice;
   std::unique_ptr<boost::asio::ip::tcp::endpoint> ep;
   bytes_array bytes;
-  static const std::string quit_str_;
+  static const std::string quit_flag_;
 };
 
 namespace server_ns

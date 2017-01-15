@@ -10,7 +10,7 @@
 #include <numeric>
 #include <boost/algorithm/string/join.hpp>
 
-const std::string connection_base::quit_str_ = "quit";
+const std::string connection_base::quit_flag_ = "quit_flag";
 
 namespace
 {
@@ -146,10 +146,10 @@ result_type connection::calculate_average() const
 
 void connection::check_quit(size_t nbytes)
 {
-  if(nbytes > 0)
+  if(nbytes >= quit_flag_.size())
   {
     std::string str(bytes.data(), bytes.data()+nbytes);
-    if(str.find(quit_str_) != std::string::npos)
+    if(str.find(quit_flag_) != std::string::npos)
     {
       if(write_timer_)
         write_timer_->cancel();
