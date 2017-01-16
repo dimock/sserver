@@ -1,11 +1,12 @@
 #!/usr/bin/python
 
 import os, os.path, sys, subprocess, argparse, sched, time
-from subprocess import Popen, PIPE, CREATE_NEW_CONSOLE
+from subprocess import Popen, PIPE
 
 if subprocess.mswindows:
   executable_name = 'sserver.exe'
-else:
+  from subprocess import CREATE_NEW_CONSOLE
+else:  
   executable_name = 'sserver'
   
 parser = argparse.ArgumentParser(description='Client-Server test...')
@@ -20,14 +21,24 @@ print 's =', args.server_flag, 'n = ', args.number_of_clients, 'e =', args.execu
 t0 = time.time()
 
 def runServer():
-  Popen([args.executable_name, '-s'], creationflags=CREATE_NEW_CONSOLE)
+  if subprocess.mswindows:
+    Popen([args.executable_name, '-s'], creationflags=CREATE_NEW_CONSOLE)
+  else:
+    Popen([args.executable_name, '-s'])
+    print 'start server'
   
 def runClients():
   for i in xrange(0, args.number_of_clients):
-    Popen([args.executable_name], creationflags=CREATE_NEW_CONSOLE)
+    if subprocess.mswindows:
+      Popen([args.executable_name], creationflags=CREATE_NEW_CONSOLE)
+    else:
+      Popen([args.executable_name])
     
 def stopAll():
-  Popen([args.executable_name, '-q'], creationflags=CREATE_NEW_CONSOLE)
+  if subprocess.mswindows:
+    Popen([args.executable_name, '-q'], creationflags=CREATE_NEW_CONSOLE)
+  else:
+    Popen([args.executable_name, '-q'])
   print 'test execution stopped'
   print 'execution time = ', time.time() - t0
 
