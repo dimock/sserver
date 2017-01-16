@@ -61,7 +61,8 @@ void connection::send_quit_signal()
   using namespace boost::asio;
   try
   {
-    write(*sock, buffer(quit_flag_.c_str(), quit_flag_.size()));
+    if(write(*sock, buffer(quit_flag_)) == quit_flag_.size())
+      std::this_thread::sleep_for(std::chrono::duration<int, std::milli>(send_timeout_));;
   }
   catch(std::exception& e)
   {

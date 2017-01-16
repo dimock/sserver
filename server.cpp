@@ -46,57 +46,63 @@ connection::connection(std::string const& ip_addr, int port,
 
 void connection::start()
 {
-  start_connection(socket_ptr(new boost::asio::ip::tcp::socket(ioservice)));
+  start_connection();
   connection_base::start();
 }
 
-void connection::start_connection(socket_ptr s)
+void connection::start_connection()
 {
-  if(!s || !acc)
+  if(!acc)
     return;
-  acc->async_accept(*s, [this, s](const boost::system::error_code & e)
+  auto s = socket_ptr(new boost::asio::ip::tcp::socket(ioservice));
+  auto slt = slot_ptr(new slot{s});
+  acc->async_accept(*s, [this, slt](const boost::system::error_code & e)
   {
-    connection_handler(s, e);
+    connection_handler(slt, e);
   });
 }
 
-void connection::connection_handler(socket_ptr s, const boost::system::error_code & e)
+void connection::connection_handler(slot_ptr slt, const boost::system::error_code & e)
 {
   using boost::asio::buffer;
-  if(!read_handler(index, s, e, 0))
+  if(!read_handler(index, slt, e, 0))
     return;
   logger_ns::logger(logger_ns::message_type::M_INFO, index, "-th client is connected");
   index++;
-  start_connection(socket_ptr(new boost::asio::ip::tcp::socket(ioservice)));
+  //buffers.push_back(Data());
+  start_connection();
 }
 
-bool connection::read_handler(int i, socket_ptr s,
+bool connection::read_handler(int i, slot_ptr slt,
                               boost::system::error_code const& e,
                               std::size_t nbytes)
 {
-  check_quit(nbytes);
+  check_quit(i, slt, nbytes);
   using boost::asio::buffer;
-  if(!s || e || please_stop_)
+  if(!slt || e || please_stop_)
+  {
+    logger_ns::logger(logger_ns::message_type::M_INFO, i, "-th client ERROR: ", e.message());
     return false;
-  if(!process_received_data(i, s, nbytes))
+  }
+  if(!process_received_data(i, slt, nbytes))
     return false;
-  s->async_read_some(buffer(bytes),
-                     [this, s, i](boost::system::error_code const& e,
+  slt->s->async_read_some(buffer(slt->buff_),
+                     [this, slt, i](boost::system::error_code const& e,
                      std::size_t nbytes) {
-    read_handler(i, s, e, nbytes);
+    read_handler(i, slt, e, nbytes);
   });
   return true;
 }
 
-bool connection::process_received_data(int i, socket_ptr s, std::size_t nbytes)
+bool connection::process_received_data(int i, slot_ptr slt, std::size_t nbytes)
 {
   if(nbytes == 0)
     return true;
-  if(!s)
+  if(!slt)
     return false;
   using boost::asio::buffer;
   size_t nnumbers = nbytes / sizeof(value_type);
-  value_type const* numbers = reinterpret_cast<value_type const*>(bytes.data());
+  value_type const* numbers = reinterpret_cast<value_type const*>(slt->buff_.data());
   std::vector<std::string> str_numbers;
   std::transform(numbers, numbers + nnumbers,
                  std::back_inserter(str_numbers),
@@ -112,7 +118,7 @@ bool connection::process_received_data(int i, socket_ptr s, std::size_t nbytes)
   result_type result = calculate_average();
   try
   {
-    boost::asio::write(*s, buffer(&result, sizeof(result)));
+    boost::asio::write(*slt->s, buffer(&result, sizeof(result)));
   }
   catch(std::exception& ex)
   {
@@ -144,11 +150,11 @@ result_type connection::calculate_average() const
   return std::accumulate(squares.begin(), squares.end(), 0) / count;
 }
 
-void connection::check_quit(size_t nbytes)
+void connection::check_quit(int i, slot_ptr slt, size_t nbytes)
 {
-  if(nbytes >= quit_flag_.size())
+  if(!slt || nbytes >= quit_flag_.size())
   {
-    std::string str(bytes.data(), bytes.data()+nbytes);
+    std::string str(slt->buff_.data(), slt->buff_.data()+nbytes);
     if(str.find(quit_flag_) != std::string::npos)
     {
       if(write_timer_)
@@ -156,6 +162,7 @@ void connection::check_quit(size_t nbytes)
       if(acc)
         acc->cancel();
       please_stop_ = true;
+      logger_ns::logger(logger_ns::message_type::M_INFO, " stop signal is received");
     }
   }
 }

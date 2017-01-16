@@ -26,7 +26,6 @@
 #include <boost/asio/write.hpp>
 #include <boost/asio/ip/tcp.hpp>
 
-using bytes_array = std::array<char, 4096>;
 using socket_ptr  = std::shared_ptr<boost::asio::ip::tcp::socket>;
 using value_type  = std::int32_t;
 using result_type = float;
@@ -56,12 +55,18 @@ protected:
 
   boost::asio::io_service ioservice;
   std::unique_ptr<boost::asio::ip::tcp::endpoint> ep;
-  bytes_array bytes;
   static const std::string quit_flag_;
 };
 
 namespace server_ns
 {
+  struct slot
+  {
+    socket_ptr s;
+    std::array<char, 1024> buff_;
+  };
+  using slot_ptr = std::shared_ptr<slot>;
+  
   class connection : public connection_base
   {
     int index = 0;
@@ -78,22 +83,25 @@ namespace server_ns
   private:
     virtual void start() override;
 
-    void start_connection(socket_ptr s);
-    void connection_handler(socket_ptr s, const boost::system::error_code & e);
-    bool read_handler(int i, socket_ptr s, boost::system::error_code const& e, std::size_t nbytes);
-    bool process_received_data(int i, socket_ptr s, std::size_t nbytes);
+    void start_connection();
+    void connection_handler(slot_ptr slt, const boost::system::error_code & e);
+    bool read_handler(int i, slot_ptr slt, boost::system::error_code const& e, std::size_t nbytes);
+    bool process_received_data(int i, slot_ptr slt, std::size_t nbytes);
     result_type calculate_average() const;
     void on_timer(boost::system::error_code const& e);
     void write_results() const;
-    void check_quit(size_t nbytes);
+    void check_quit(int i, slot_ptr slt, size_t nbytes);
   };
 
 } // namespace server_ns
 
 namespace client_ns
 {
+  using bytes_array = std::array<char, 4096>;
+
   class connection : public connection_base
   {
+    bytes_array bytes;
     socket_ptr sock;
     int send_timeout_;
     std::random_device rdevice;
